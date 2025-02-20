@@ -162,11 +162,13 @@ fn review_status(shell: *Shell) !enum { resolved, unresolved } {
     return if (unresolved == 0) .resolved else .unresolved;
 }
 
+//? I'm not clear on whether REVIEW_SUMMARY is for the PR author or the reviewer.
 fn review_new(shell: *Shell) !void {
     if (try git_has_changes(shell)) {
         log.err("working tree is dirty", .{});
         return error.DirtyWorkingTree;
     }
+    //? We should also fail if there is already a `REVIEW_SUMMARY` and/or a review commit.
     const summary =
         \\# Review Summary
         \\
@@ -244,6 +246,9 @@ fn parse_diff(diff: []const u8) !ParseDiffResult {
     return result;
 }
 
+//? I think we should ignore untracked files here -- I always have untracked files (debug logs,
+//? notes, data files). I _could_ use a global gitignore but I would prefer not to -- I use "git
+//? status" to find them.
 fn git_has_changes(shell: *Shell) !bool {
     const output = try shell.exec_stdout("git status --short", .{});
     return output.len > 0;
