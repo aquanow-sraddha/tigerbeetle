@@ -1022,8 +1022,10 @@ pub const Simulator = struct {
                 }
 
                 if (!commit.prepare.header.operation.vsr_reserved()) {
+                    const client: *const Cluster.Client = &cluster.clients[commit.client_index.?];
                     simulator.workload.on_reply(
                         commit.client_index.?,
+                        client.release,
                         commit.reply.header.operation.cast(StateMachine),
                         commit.reply.header.timestamp,
                         commit.prepare.body_used(),
@@ -1108,9 +1110,10 @@ pub const Simulator = struct {
 
         const request_metadata = simulator.workload.build_request(
             client_index,
+            client.release,
             request_message.buffer[@sizeOf(vsr.Header)..constants.message_size_max],
         );
-        assert(request_metadata.size <= constants.message_size_max - @sizeOf(vsr.Header));
+        assert(request_metadata.size <= constants.message_body_size_max);
 
         simulator.cluster.request(
             client_index,

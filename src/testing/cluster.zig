@@ -79,7 +79,10 @@ pub fn ClusterType(comptime StateMachineType: anytype) type {
             /// - Only releases[0] is "bundled" in each replica. (Use `replica_restart()` to add
             ///   more).
             releases: []const Release,
-            client_release: vsr.Release,
+            client_release: ?vsr.Release = null,
+
+            network: NetworkOptions,
+            storage: Storage.Options,
             state_machine: StateMachine.Options,
         };
 
@@ -305,7 +308,16 @@ pub fn ClusterType(comptime StateMachineType: anytype) type {
                         .eviction_callback = client_on_eviction,
                     },
                 );
-                client.release = options.cluster.client_release;
+                if (options.client_release) |client_release| {
+                    client.release = client_release;
+                } else {
+                    // Choosing a release from the list of supported releases
+                    // the workload can simulate.
+                    const client_releases_supported = StateMachine.Workload.releases_supported;
+                    client.release = client_releases_supported[
+                        prng.index(client_releases_supported)
+                    ];
+                }
             }
             errdefer for (clients) |*client| client.deinit(allocator);
 
@@ -571,12 +583,13 @@ pub fn ClusterType(comptime StateMachineType: anytype) type {
             release: vsr.Release,
             releases_bundled: *const vsr.ReleaseList,
         }) !void {
-            const release_client_min = for (cluster.options.releases) |release| {
+            const release_client_min: vsr.Release =
+                for (cluster.options.releases) |release|
+            {
                 if (release.release.value == options.release.value) {
                     break release.release_client_min;
                 }
             } else unreachable;
-
             cluster.releases_bundled[replica_index] = options.releases_bundled.*;
 
             var replica = &cluster.replicas[replica_index];
@@ -724,6 +737,7 @@ pub fn ClusterType(comptime StateMachineType: anytype) type {
                 undefined,
                 message,
             );
+            assert(message.header.request != 0);
         }
 
         /// The `request_callback` is not used — Cluster uses `Client.on_reply_{context,callback}`
