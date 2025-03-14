@@ -10,7 +10,7 @@ const fuzz = @import("../testing/fuzz.zig");
 const allocator = fuzz.allocator;
 
 pub fn main(args: fuzz.FuzzArgs) !void {
-    var prng = std.rand.DefaultPrng.init(args.seed);
+    var prng = stdx.PRNG.from_seed(args.seed);
     const message_body_size_min = constants.sector_size - @sizeOf(vsr.Header);
     const message_body_size_max = (1024 * 1024) - @sizeOf(vsr.Header);
     const buffer_expected = try allocator.alignedAlloc(
@@ -27,15 +27,14 @@ pub fn main(args: fuzz.FuzzArgs) !void {
     defer allocator.free(buffer_actual);
 
     const events_max = args.events_max orelse 1024;
-    const random = prng.random();
     for (0..events_max) |_| {
-        const buffer_size: usize = random.intRangeAtMost(
+        const buffer_size: usize = prng.range_inclusive(
             usize,
             message_body_size_min,
             message_body_size_max,
         );
         try run_fuzz(.{
-            .random = random,
+            .prng = &prng,
             .buffer_expected = buffer_expected[0..buffer_size],
             .buffer_actual = buffer_actual[0..buffer_size],
         });
@@ -43,7 +42,7 @@ pub fn main(args: fuzz.FuzzArgs) !void {
 }
 
 fn run_fuzz(options: struct {
-    random: std.rand.Random,
+    prng: *stdx.PRNG,
     buffer_expected: []u8,
     buffer_actual: []u8,
 }) !void {
@@ -57,9 +56,9 @@ fn run_fuzz(options: struct {
         options.buffer_actual[0 .. options.buffer_actual.len - postamble_alignment];
 
     // Generate the batch plan with element sizes from 2^0 to 2^8.
-    const batch_element_size: u32 = std.math.pow(u32, 2, options.random.uintAtMost(u32, 8));
+    const batch_element_size: u32 = std.math.pow(u32, 2, options.prng.int_inclusive(u32, 8));
     var batches = stdx.BoundedArrayType(u32, 8190){};
-    const batch_count_max = options.random.intRangeAtMost(
+    const batch_count_max = options.prng.range_inclusive(
         usize,
         1,
         batches.capacity(),
@@ -67,8 +66,8 @@ fn run_fuzz(options: struct {
 
     // Encoder will ignore and overwrite any existing content in the target buffer,
     // at the end, both buffers must be equal.
-    options.random.bytes(buffer_expected);
-    options.random.bytes(buffer_actual);
+    options.prng.fill(buffer_expected);
+    options.prng.fill(buffer_actual);
 
     // Encode.
     var encoder = MultiBatchEncoder.init(buffer_actual, .{
@@ -97,10 +96,10 @@ fn run_fuzz(options: struct {
             batch_element_size,
         ));
         const batch_element_count: u32 = if (batch_element_count_max > 0)
-            switch (options.random.enumValue(enum { zero, one, random })) {
+            switch (options.prng.enum_uniform(enum { zero, one, random })) {
                 .zero => 0,
                 .one => 1,
-                .random => options.random.intRangeAtMost(u32, 1, @min(
+                .random => options.prng.range_inclusive(u32, 1, @min(
                     std.math.maxInt(u16), // Cannot encode more than `u16` elements.
                     batch_element_count_max,
                 )),

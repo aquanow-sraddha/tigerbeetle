@@ -424,7 +424,7 @@ pub fn WorkloadType(comptime AccountingStateMachine: type) type {
                 assert(result_count <= batch_result_max);
 
                 // Maybe single-batch request.
-                if (body_encoder.batch_count == 1 and self.random.boolean()) break;
+                if (body_encoder.batch_count == 1 and self.prng.boolean()) break;
             }
             maybe(event_count == 0);
             assert(result_count == 0 or event_count > 0);
@@ -974,7 +974,7 @@ pub fn WorkloadType(comptime AccountingStateMachine: type) type {
                 client_release,
                 operation,
             );
-            const limit: u32 = switch (self.random.enumValue(enum {
+            const limit: u32 = switch (self.prng.enum_uniform(enum {
                 zero,
                 one,
                 random,
@@ -983,7 +983,7 @@ pub fn WorkloadType(comptime AccountingStateMachine: type) type {
             })) {
                 .zero => 0,
                 .one => 1,
-                .random => self.random.uintLessThan(u32, batch_result_max),
+                .random => self.prng.int_inclusive(u32, batch_result_max),
                 .batch_max => batch_result_max,
                 .int_max => std.math.maxInt(u32),
             };

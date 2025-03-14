@@ -512,8 +512,7 @@ pub const MultiBatchEncoder = struct {
 
 // The maximum number of batches, all with zero elements.
 test "batch: maximum batches with no elements" {
-    var rng = std.rand.DefaultPrng.init(42);
-    const random = rng.random();
+    var prng = stdx.PRNG.from_seed(42);
 
     const batch_count = std.math.maxInt(u16);
     const element_size = 128;
@@ -529,7 +528,7 @@ test "batch: maximum batches with no elements" {
     );
     defer testing.allocator.free(buffer);
     const written_bytes = try TestRunner.run(.{
-        .random = random,
+        .prng = &prng,
         .element_size = element_size,
         .buffer = buffer,
         .batch_count = batch_count,
@@ -540,8 +539,7 @@ test "batch: maximum batches with no elements" {
 
 // The maximum number of batches, when each one has one single element.
 test "batch: maximum batches with a single element" {
-    var rng = std.rand.DefaultPrng.init(42);
-    const random = rng.random();
+    var prng = stdx.PRNG.from_seed(42);
 
     const element_size = 128;
     const buffer_size = (1024 * 1024) - @sizeOf(vsr.Header); // 1MiB message.
@@ -553,7 +551,7 @@ test "batch: maximum batches with a single element" {
     const buffer = try testing.allocator.alignedAlloc(u8, @alignOf(vsr.Header), buffer_size);
     defer testing.allocator.free(buffer);
     const written_bytes = try TestRunner.run(.{
-        .random = random,
+        .prng = &prng,
         .element_size = element_size,
         .buffer = buffer,
         .batch_count = batch_count_max,
@@ -570,8 +568,7 @@ test "batch: maximum batches with a single element" {
 
 // The maximum number of elements on a single batch.
 test "batch: maximum elements on a single batch" {
-    var rng = std.rand.DefaultPrng.init(42);
-    const random = rng.random();
+    var prng = stdx.PRNG.from_seed(42);
 
     const element_size = 128;
     const buffer_size = (1024 * 1024) - @sizeOf(vsr.Header); // 1MiB message.
@@ -581,7 +578,7 @@ test "batch: maximum elements on a single batch" {
     const buffer = try testing.allocator.alignedAlloc(u8, @alignOf(vsr.Header), buffer_size);
     defer testing.allocator.free(buffer);
     const written_bytes = try TestRunner.run(.{
-        .random = random,
+        .prng = &prng,
         .element_size = element_size,
         .buffer = buffer,
         .batch_count = 1,
@@ -591,8 +588,7 @@ test "batch: maximum elements on a single batch" {
 }
 
 test "batch: invalid format" {
-    var rng = std.rand.DefaultPrng.init(42);
-    const random = rng.random();
+    var prng = stdx.PRNG.from_seed(42);
 
     const element_size = 128;
     const buffer_size = (1024 * 1024) - @sizeOf(vsr.Header); // 1MiB message.
@@ -610,7 +606,7 @@ test "batch: invalid format" {
     });
     var event_total_count: usize = 0;
     for (0..batch_count) |_| {
-        const event_count: u16 = random.intRangeAtMostBiased(u16, 0, 100);
+        const event_count: u16 = prng.int_inclusive(u16, 100);
         const batch_size: u32 = element_size * event_count;
         const writable = encoder.writable().?;
         try testing.expect(writable.len >= batch_size);
@@ -687,12 +683,13 @@ test "batch: invalid format" {
 
 const TestRunner = struct {
     fn run(options: struct {
-        random: std.rand.Random,
+        prng: *stdx.PRNG,
         element_size: u32,
         buffer: []align(16) u8,
         batch_count: u16,
         elements_per_batch: ?u16 = null,
     }) !usize {
+        const ratio = stdx.PRNG.ratio;
         const BoundedArray = stdx.BoundedArrayType(u16, std.math.maxInt(u16));
         var expected: BoundedArray = .{};
 
@@ -714,17 +711,17 @@ const TestRunner = struct {
                 elements_per_batch
             else random: {
                 if (index == options.batch_count - 1) {
-                    const batch_full = options.random.uintLessThanBiased(u8, 100) < 30;
+                    const batch_full = options.prng.chance(ratio(30, 100));
                     if (batch_full) {
                         break :random @intCast(@divFloor(bytes_available, options.element_size));
                     }
                 }
 
-                const batch_empty = options.random.uintLessThanBiased(u8, 100) < 30;
+                const batch_empty = options.prng.chance(ratio(30, 100));
                 if (batch_empty) break :random 0;
 
                 break :random @intCast(@divFloor(
-                    options.random.intRangeAtMostBiased(usize, 0, bytes_available),
+                    options.prng.int_inclusive(usize, bytes_available),
                     options.element_size,
                 ));
             };

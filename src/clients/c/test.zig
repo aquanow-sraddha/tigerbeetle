@@ -155,14 +155,10 @@ test "tb_client echo" {
         const operation: tb_client.Operation = operation: {
             if (operation_current == null or
                 // Sometimes repeat the same operation for testing multi-batch.
-                prng.random().boolean())
+                prng.boolean())
             {
                 operation_current = operations[
-                    prng.random().intRangeAtMost(
-                        usize,
-                        0,
-                        operations.len - 1,
-                    )
+                    prng.index(operations)
                 ];
             }
             break :operation operation_current.?;

@@ -306,6 +306,12 @@ fn options_swarm(prng: *stdx.PRNG) Simulator.Options {
     else
         prng.range_inclusive(u32, batch_size_limit_min, constants.message_body_size_max);
 
+    const multi_batch_per_request_limit: u32 = prng.range_inclusive(
+        u32,
+        1,
+        @divFloor(batch_size_limit, batch_size_limit_min) - 1,
+    );
+
     const MiB = 1024 * 1024;
     const storage_size_limit = vsr.sector_floor(
         200 * MiB - prng.int_inclusive(u64, 20 * MiB),
@@ -333,7 +339,7 @@ fn options_swarm(prng: *stdx.PRNG) Simulator.Options {
                 .lsm_forest_node_count = 4096,
                 .cache_entries_accounts = if (prng.boolean()) 256 else 0,
                 .cache_entries_transfers = if (prng.boolean()) 256 else 0,
-                .cache_entries_posted = if (prng.boolean()) 256 else 0,
+                .cache_entries_transfers_pending = if (prng.boolean()) 256 else 0,
             },
         },
     };
@@ -383,11 +389,12 @@ fn options_swarm(prng: *stdx.PRNG) Simulator.Options {
 
     const workload_options = StateMachine.Workload.Options.generate(prng, .{
         .batch_size_limit = batch_size_limit,
+        .multi_batch_per_request_limit = multi_batch_per_request_limit,
         .client_count = client_count,
         // TODO(DJ) Once Workload no longer needs in_flight_max, make stalled_queue_capacity
         // private. Also maybe make it dynamic (computed from the client_count instead of
         // clients_max).
-        .in_flight_max = ReplySequence.stalled_queue_capacity,
+        .in_flight_max = ReplySequence.stalled_queue_capacity * multi_batch_per_request_limit,
     });
 
     return .{
