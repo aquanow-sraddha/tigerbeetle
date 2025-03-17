@@ -644,22 +644,26 @@ pub fn ClientType(
                 message.header.checksum,
             });
 
-            self.send_message_to_replica( // Retransmit potentially dropped message.
-                @as(u8, @intCast(self.view % self.replica_count)),
-                message.base(),
-            );
+            if (message.header.operation == .register) {
+                self.send_message_to_replicas(message.base());
+            } else {
+                // Retransmit potentially dropped message.
+                const primary: u32 = self.view % self.replica_count;
+                self.send_message_to_replica(@as(u8, @intCast(primary)), message.base());
 
-            const ping = Header.PingClient{
-                .command = .ping_client,
-                .cluster = self.cluster,
-                .release = self.release,
-                .client = self.id,
-                .ping_timestamp_monotonic = self.time.monotonic(),
-            };
-            self.send_header_to_replica( // Try to learn the new view.
-                @as(u8, @intCast((self.view + self.request_timeout.attempts) % self.replica_count)),
-                ping.frame_const(),
-            );
+                // Try to learn the new view.
+                const ping = Header.PingClient{
+                    .command = .ping_client,
+                    .cluster = self.cluster,
+                    .release = self.release,
+                    .client = self.id,
+                    .ping_timestamp_monotonic = self.time.monotonic(),
+                };
+                assert(self.request_timeout.attempts > 0);
+                const next_backup: u32 =
+                    (self.view + self.request_timeout.attempts) % self.replica_count;
+                self.send_header_to_replica(@as(u8, @intCast(next_backup)), ping.frame_const());
+            }
         }
 
         /// The caller owns the returned message, if any, which has exactly 1 reference.
